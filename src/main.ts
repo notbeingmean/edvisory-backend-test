@@ -1,28 +1,23 @@
 import "dotenv/config";
 
 import fastify from "fastify";
-import { AppDataSource, db_opts } from "./configs/db/data-source";
-import cookie from "@fastify/cookie";
-import session from "@fastify/session";
+import { AppDataSource, db_opts } from "./configs/db/typeorm";
 
-import fastifyAutoload from "@fastify/autoload";
 import typeormPlugin from "typeorm-fastify-plugin";
+import swaggerPlugin from "./plugins/swagger";
+import authenticate from "./plugins/authenticate";
+import autoload from "./plugins/autoload";
+import validatebody from "./plugins/validatebody";
 
 function builder(opts = {}) {
   const app = fastify(opts);
 
-  app.register(cookie);
-  app.register(session, {
-    cookieName: "sessionId",
-    secret: "a secret with minimum length of 32 characters",
-    cookie: { maxAge: 1800000, secure: false },
-  });
+  app.register(swaggerPlugin);
+  app.register(authenticate); // Register authenticate plugin before autoload
+  app.register(autoload);
+  app.register(validatebody);
+
   app.register(typeormPlugin, db_opts);
-  app.register(fastifyAutoload, {
-    dir: `${__dirname}/routes`,
-    dirNameRoutePrefix: false,
-    options: { prefix: "/api" },
-  });
 
   return app;
 }

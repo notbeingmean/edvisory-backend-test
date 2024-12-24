@@ -12,6 +12,9 @@ declare global {
       POSTGRES_HOST: string;
       POSTGRES_PORT: string;
       SALT_ROUNDS: string;
+      SESSION_SECRET: string;
+      SUPABASE_URL: string;
+      SUPABASE_ANON_KEY: string;
     }
   }
 }

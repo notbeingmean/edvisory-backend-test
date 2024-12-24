@@ -1,28 +1,23 @@
 import { FastifyInstance } from "fastify";
 import { User } from "../entities";
 import { comparePassword, hashPassword } from "../libs/utils";
+
 import {
   TRegisterBody,
   registerSchemaJson,
   registerSchema,
-} from "../libs/schema/register";
-import { loginSchema, loginSchemaJson, TLoginBody } from "../libs/schema/login";
+} from "../schemas/register";
+import { loginSchema, loginSchemaJson, TLoginBody } from "../schemas/login";
 
 export default async function AuthController(fastify: FastifyInstance) {
   fastify.post<{ Body: TRegisterBody }>(
-    "/register",
+    "/signup",
     {
       schema: {
         body: registerSchemaJson,
       },
-      preHandler: async (request, reply) => {
-        try {
-          const value = await registerSchema.validateAsync(request.body);
-          request.body = value;
-        } catch (err) {
-          return reply.status(400).send("Invalid request body" + err);
-        }
-      },
+      preHandler: async (request, reply) =>
+        fastify.validateBody(request, reply, registerSchema),
     },
     async (request, reply) => {
       const { name, email, password } = request.body;
@@ -51,7 +46,7 @@ export default async function AuthController(fastify: FastifyInstance) {
   );
 
   fastify.post<{ Body: TLoginBody }>(
-    "/login",
+    "/signin",
     {
       schema: {
         body: loginSchemaJson,
@@ -67,13 +62,13 @@ export default async function AuthController(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       const { email, password } = request.body;
+
       const userRepository = fastify.orm.getRepository(User);
       try {
         const user = await userRepository.findOne({
-          where: {
-            email,
-          },
+          where: { email },
         });
+
         if (!user) {
           return reply.status(404).send("User not found");
         }
@@ -86,16 +81,26 @@ export default async function AuthController(fastify: FastifyInstance) {
         if (!user.id) {
           return reply.status(500).send("Invalid user ID");
         }
+
         request.session.user = {
           id: user.id,
           name: user.name,
           email: user.email,
         };
-      } catch (err) {
-        return reply.status(500).send("Failed to login" + err);
-      }
 
-      return reply.send("Logged in");
+        return reply.send({ message: "Logged in", user: user.name });
+      } catch (err) {
+        return reply.status(500).send("Failed to login: " + err);
+      }
+    }
+  );
+
+  fastify.get(
+    "/signout",
+    { preHandler: fastify.authenticate },
+    async (request, reply) => {
+      request.session.destroy();
+      return reply.send({ message: "Logged out", user: request.session.user });
     }
   );
 }

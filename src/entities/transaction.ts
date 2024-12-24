@@ -7,7 +7,7 @@ import {
   ManyToOne,
   JoinColumn,
 } from "typeorm";
-import { IsEnum, MinLength, IsNumber, Min } from "class-validator";
+import { IsEnum, IsNumber, Min, IsUrl } from "class-validator";
 
 import { Account } from "./account";
 
@@ -16,21 +16,24 @@ export class Transaction {
   @PrimaryGeneratedColumn("uuid")
   id?: string;
 
-  @Column("varchar", { length: 255 })
-  @MinLength(3)
-  note!: string;
-
-  @Column("decimal", { precision: 10, scale: 2 })
-  @IsNumber()
-  @Min(0)
-  amount!: number;
-
   @Column({
     type: "enum",
     enum: ["INCOME", "EXPENSE"],
   })
   @IsEnum(["INCOME", "EXPENSE"])
   type!: "INCOME" | "EXPENSE";
+
+  @Column("decimal", { precision: 10, scale: 2 })
+  @IsNumber()
+  @Min(0)
+  amount!: number;
+
+  @Column("varchar", { length: 255, nullable: true })
+  @IsUrl()
+  imageUrl?: string;
+
+  @Column("varchar", { length: 255, nullable: true })
+  note?: string;
 
   @ManyToOne(() => Account, (account) => account.transactions)
   @JoinColumn()

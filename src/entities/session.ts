@@ -1,13 +1,24 @@
-import { Entity, Column, PrimaryColumn } from "typeorm";
+import { ISession } from "connect-typeorm";
+import {
+  Column,
+  DeleteDateColumn,
+  Entity,
+  Index,
+  PrimaryColumn,
+} from "typeorm";
 
-@Entity("session")
-export class Session {
+@Entity()
+export class Session implements ISession {
+  @Index()
+  @Column("bigint")
+  public expiredAt = Date.now();
+
   @PrimaryColumn("varchar", { length: 255 })
-  id!: string;
+  public id = "";
 
-  @Column("json")
-  json!: string;
+  @Column("text")
+  public json = "";
 
-  @Column("timestamptz") // Use timestamptz for PostgreSQL
-  expiredAt!: Date;
+  @DeleteDateColumn()
+  public destroyedAt?: Date;
 }
