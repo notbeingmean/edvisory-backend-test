@@ -8,15 +8,18 @@ import swaggerPlugin from "./plugins/swagger";
 import authenticate from "./plugins/authenticate";
 import autoload from "./plugins/autoload";
 import validatebody from "./plugins/validatebody";
+import fastifyMultipart from "@fastify/multipart";
+import supabase from "./plugins/supabase";
 
 function builder(opts = {}) {
   const app = fastify(opts);
 
   app.register(swaggerPlugin);
+  app.register(supabase);
+  app.register(fastifyMultipart);
   app.register(authenticate); // Register authenticate plugin before autoload
   app.register(autoload);
   app.register(validatebody);
-
   app.register(typeormPlugin, db_opts);
 
   return app;

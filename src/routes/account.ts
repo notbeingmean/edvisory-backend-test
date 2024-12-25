@@ -1,96 +1,125 @@
 import { FastifyInstance } from "fastify";
+import parse from "joi-to-json";
+import Joi from "joi";
 import {
-  accountSchema,
-  accountSchemaJson,
-  TAccountBody,
-} from "../schemas/account";
-import { Account, User } from "../entities";
+  handleCreateAccount,
+  handleDeleteAccount,
+  handleGetAccount,
+  handleGetAccounts,
+  handleGetAccountSummary,
+  handleUpdateAccount,
+} from "../handlers/account";
 
-export default async function ProtectedRoutes(fastify: FastifyInstance) {
+type TAccountBody = {
+  accountName: string;
+  balance: number;
+};
+
+const accountSchema = Joi.object({
+  accountName: Joi.string().required(),
+  balance: Joi.number().required(),
+});
+
+export default async function AccountRoute(fastify: FastifyInstance) {
   fastify.post<{ Body: TAccountBody }>(
-    "/account/create-account",
+    "/account",
     {
       schema: {
-        body: accountSchemaJson,
+        tags: ["Account"],
+        description: "Create a new account for the authenticated user",
+        body: parse(accountSchema),
       },
       preHandler: [
-        async (request, reply) => {
-          await fastify.authenticate(request, reply);
-        },
-        async (request, reply) => {
-          await fastify.validateBody(request, reply, accountSchema);
-        },
+        fastify.authenticate,
+        async (request, reply) =>
+          fastify.validateBody(request, reply, accountSchema),
       ],
     },
-    async (request, reply) => {
-      const userRepository = fastify.orm.getRepository(User);
-      const accountRepository = fastify.orm.getRepository(Account);
-
-      const { accountName, balance } = request.body;
-
-      const user = await userRepository.findOne({
-        where: { id: request.session.user.id },
-      });
-
-      if (!user) {
-        return reply.status(404).send("User not found");
-      }
-
-      const newAccount = accountRepository.create({
-        accountName,
-        balance,
-        user,
-      });
-
-      await accountRepository.save(newAccount);
-
-      return reply.send(newAccount);
-    }
+    handleCreateAccount
   );
 
   fastify.get<{ Params: { accountId: string } }>(
     "/account/:accountId",
     {
+      schema: {
+        tags: ["Account"],
+        description: "Get account details by ID",
+        params: parse(
+          Joi.object({
+            accountId: Joi.string().description("Account ID"),
+          })
+        ),
+      },
       preHandler: fastify.authenticate,
     },
-    async (request, reply) => {
-      const accountRepository = fastify.orm.getRepository(Account);
-
-      const account = await accountRepository.findOne({
-        where: {
-          id: request.params.accountId,
-          user: { id: request.session.user.id },
-        },
-        relations: ["transactions"],
-      });
-
-      if (!account) {
-        return reply.status(404).send("Account not found");
-      }
-
-      return reply.send(account);
-    }
+    handleGetAccount
   );
+
   fastify.get(
     "/account",
     {
+      schema: {
+        tags: ["Account"],
+        description: "Get all accounts for the authenticated user",
+      },
       preHandler: fastify.authenticate,
     },
-    async (request, reply) => {
-      const accountRepository = fastify.orm.getRepository(Account);
+    handleGetAccounts
+  );
 
-      const account = await accountRepository.findOne({
-        where: {
-          user: { id: request.session.user.id },
-        },
-        relations: ["transactions"],
-      });
+  fastify.patch<{ Body: TAccountBody; Params: { accountId: string } }>(
+    "/account/:accountId",
+    {
+      schema: {
+        tags: ["Account"],
+        description: "Update account details by ID",
+        params: parse(
+          Joi.object({
+            accountId: Joi.string().description("Account ID"),
+          })
+        ),
+        body: parse(accountSchema),
+      },
+      preHandler: [
+        fastify.authenticate,
+        async (request, reply) =>
+          fastify.validateBody(request, reply, accountSchema),
+      ],
+    },
+    handleUpdateAccount
+  );
 
-      if (!account) {
-        return reply.status(404).send("Account not found");
-      }
+  fastify.delete<{ Params: { accountId: string } }>(
+    "/account/:accountId",
+    {
+      schema: {
+        tags: ["Account"],
+        description: "Delete account by ID",
+        params: parse(
+          Joi.object({
+            accountId: Joi.string().description("Account ID"),
+          })
+        ),
+      },
+      preHandler: fastify.authenticate,
+    },
+    handleDeleteAccount
+  );
 
-      return reply.send(account);
-    }
+  fastify.get<{ Params: { accountId: string } }>(
+    "/account/:accountId/summary",
+    {
+      schema: {
+        tags: ["Account"],
+        description: "Get account summary by ID",
+        params: parse(
+          Joi.object({
+            accountId: Joi.string().description("Account ID"),
+          })
+        ),
+      },
+      preHandler: fastify.authenticate,
+    },
+    handleGetAccountSummary
   );
 }

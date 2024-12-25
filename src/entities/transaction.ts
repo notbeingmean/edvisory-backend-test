@@ -6,10 +6,12 @@ import {
   UpdateDateColumn,
   ManyToOne,
   JoinColumn,
+  ManyToMany,
 } from "typeorm";
 import { IsEnum, IsNumber, Min, IsUrl } from "class-validator";
 
 import { Account } from "./account";
+import { Category } from "./category";
 
 @Entity("transactions")
 export class Transaction {
@@ -38,6 +40,9 @@ export class Transaction {
   @ManyToOne(() => Account, (account) => account.transactions)
   @JoinColumn()
   account!: Account;
+
+  @ManyToMany(() => Category, (cat) => cat.transactions)
+  categories?: Category[];
 
   @CreateDateColumn()
   createdAt?: Date;

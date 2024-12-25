@@ -1,106 +1,54 @@
 import { FastifyInstance } from "fastify";
-import { User } from "../entities";
-import { comparePassword, hashPassword } from "../libs/utils";
+import { handleSignin, handleSignout, handleSignup } from "../handlers/auth";
+import parse from "joi-to-json";
+import Joi from "joi";
 
-import {
-  TRegisterBody,
-  registerSchemaJson,
-  registerSchema,
-} from "../schemas/register";
-import { loginSchema, loginSchemaJson, TLoginBody } from "../schemas/login";
+const signupSchema = Joi.object({
+  name: Joi.string().required(),
+  email: Joi.string().email().required(),
+  password: Joi.string().min(6).required(),
+});
 
-export default async function AuthController(fastify: FastifyInstance) {
-  fastify.post<{ Body: TRegisterBody }>(
-    "/signup",
+const signinSchema = Joi.object({
+  email: Joi.string().email().required(),
+  password: Joi.string().min(6).required(),
+});
+
+export default async function AuthRoute(fastify: FastifyInstance) {
+  fastify.post(
+    "/auth/signup",
     {
       schema: {
-        body: registerSchemaJson,
+        tags: ["auth"],
+        description: "Register a new user",
+        body: parse(signupSchema),
       },
       preHandler: async (request, reply) =>
-        fastify.validateBody(request, reply, registerSchema),
+        fastify.validateBody(request, reply, signupSchema),
     },
-    async (request, reply) => {
-      const { name, email, password } = request.body;
-      const userRepository = fastify.orm.getRepository(User);
-      try {
-        const existingUser = await userRepository.findOne({
-          where: [{ email }, { name }],
-        });
-
-        const newUser = userRepository.create({
-          name,
-          email,
-          password: await hashPassword(password),
-        });
-
-        if (existingUser) {
-          return reply.status(400).send("User already exists");
-        }
-        await userRepository.save(newUser);
-      } catch (err) {
-        return reply.status(500).send("Failed to save user" + err);
-      }
-
-      return reply.send({ name, email });
-    }
+    handleSignup
   );
 
-  fastify.post<{ Body: TLoginBody }>(
-    "/signin",
+  fastify.post(
+    "/auth/signin",
     {
       schema: {
-        body: loginSchemaJson,
+        tags: ["auth"],
+        description: "Login user",
+        body: parse(signinSchema),
       },
-      preHandler: async (request, reply) => {
-        try {
-          const value = await loginSchema.validateAsync(request.body);
-          request.body = value;
-        } catch (err) {
-          return reply.status(400).send("Invalid request body" + err);
-        }
-      },
+      preHandler: async (request, reply) =>
+        fastify.validateBody(request, reply, signinSchema),
     },
-    async (request, reply) => {
-      const { email, password } = request.body;
-
-      const userRepository = fastify.orm.getRepository(User);
-      try {
-        const user = await userRepository.findOne({
-          where: { email },
-        });
-
-        if (!user) {
-          return reply.status(404).send("User not found");
-        }
-
-        const isPasswordValid = await comparePassword(password, user.password);
-        if (!isPasswordValid) {
-          return reply.status(401).send("Invalid password");
-        }
-
-        if (!user.id) {
-          return reply.status(500).send("Invalid user ID");
-        }
-
-        request.session.user = {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-        };
-
-        return reply.send({ message: "Logged in", user: user.name });
-      } catch (err) {
-        return reply.status(500).send("Failed to login: " + err);
-      }
-    }
+    handleSignin
   );
 
   fastify.get(
-    "/signout",
-    { preHandler: fastify.authenticate },
-    async (request, reply) => {
-      request.session.destroy();
-      return reply.send({ message: "Logged out", user: request.session.user });
-    }
+    "/auth/signout",
+    {
+      schema: { tags: ["auth"], description: "Logout user" },
+      preHandler: fastify.authenticate,
+    },
+    handleSignout
   );
 }

@@ -5,7 +5,18 @@ import fastifySwagger from "@fastify/swagger";
 import fastifySwaggerUi from "@fastify/swagger-ui";
 
 async function swaggerPlugin(app: FastifyInstance) {
-  app.register(fastifySwagger);
+  app.register(fastifySwagger, {
+    swagger: {
+      info: {
+        title: "Test swagger",
+        description: "Testing the Fastify swagger API",
+        version: "0.1.0",
+      },
+      consumes: ["application/json", "multipart/form-data"],
+      produces: ["application/json"],
+      schemes: ["http", "https"],
+    },
+  });
   app.register(fastifySwaggerUi, {
     routePrefix: "/documentation",
     uiConfig: {
