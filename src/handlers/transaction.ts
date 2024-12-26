@@ -1,20 +1,38 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { Account, Transaction } from "../entities";
+import { Category } from "../entities/category";
+import { In, Between } from "typeorm";
+import { convertToDateTime, filterBadWords } from "../libs/utils";
 
 export type CreateTransactionType = {
   type: "INCOME" | "EXPENSE";
   amount: number;
   note: string;
   imageUrl?: string;
+  categories?: string[];
 };
 
 export async function handleGetTransactions(
-  request: FastifyRequest,
+  request: FastifyRequest<{
+    Querystring: {
+      accountId?: string;
+      categories?: string[];
+      page?: number;
+      limit?: number;
+      startDate?: string;
+      endDate?: string;
+    };
+  }>,
   reply: FastifyReply
 ) {
   const transactionRepository = request.server.orm.getRepository(Transaction);
   const accountRepository = request.server.orm.getRepository(Account);
-  const { accountId } = request.query as { accountId?: string };
+
+  const { accountId, categories, startDate, endDate } = request.query;
+
+  const page = request.query.page || 1;
+  const limit = request.query.limit || 10;
+  const skip = (page - 1) * limit;
 
   try {
     const account = accountId
@@ -34,14 +52,32 @@ export async function handleGetTransactions(
       return reply.status(404).send({ message: "Account not found" });
     }
 
-    const transactions = await transactionRepository.find({
+    const [transactions, total] = await transactionRepository.findAndCount({
       where: {
         account: { id: account.id },
+        categories: {
+          name: categories ? In(categories) : undefined,
+        },
+        createdAt:
+          startDate && endDate
+            ? Between(convertToDateTime(startDate), convertToDateTime(endDate))
+            : undefined,
       },
+      relations: ["categories"],
+      skip,
+      take: limit,
       order: { createdAt: "DESC" },
     });
 
-    return reply.send(transactions);
+    return reply.send({
+      data: transactions,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
   } catch (error) {
     return reply
       .status(500)
@@ -50,10 +86,12 @@ export async function handleGetTransactions(
 }
 
 export async function handleGetTransaction(
-  request: FastifyRequest,
+  request: FastifyRequest<{
+    Params: { transactionId: string };
+  }>,
   reply: FastifyReply
 ) {
-  const { transactionId } = request.params as { transactionId: string };
+  const { transactionId } = request.params;
   const transactionRepository = request.server.orm.getRepository(Transaction);
   const { user } = request.session;
 
@@ -61,12 +99,10 @@ export async function handleGetTransaction(
     const transaction = await transactionRepository.findOne({
       where: {
         id: transactionId,
+        account: { user: { id: user.id } },
       },
+      relations: ["categories"],
     });
-
-    if (transaction?.account.user.id !== user.id) {
-      return reply.status(403).send({ message: "Forbidden" });
-    }
 
     if (!transaction) {
       return reply.status(404).send("Transaction not found");
@@ -85,26 +121,29 @@ export async function handleCreateTransaction(
   }>,
   reply: FastifyReply
 ) {
-  const { type, amount, note, imageUrl } = request.body;
+  const { type, amount, note, imageUrl, categories } = request.body;
+
   const { accountId } = request.query;
-  const transactionRepository = request.server.orm.getRepository(Transaction);
-  const accountRepository = request.server.orm.getRepository(Account);
+  const { orm } = request.server;
+  const { session } = request;
+
+  const transactionRepository = orm.getRepository(Transaction);
+  const accountRepository = orm.getRepository(Account);
+  const categoriesRepository = orm.getRepository(Category);
+
+  const queryRunner = orm.createQueryRunner();
+  await queryRunner.connect();
+  await queryRunner.startTransaction();
 
   try {
-    const account = accountId
-      ? await accountRepository.findOne({
-          where: {
-            id: accountId,
-            user: { id: request.session.user.id },
-          },
-        })
-      : await accountRepository.findOne({
-          where: {
-            user: { id: request.session.user.id },
-          },
-        });
+    const account = await accountRepository.findOne({
+      where: {
+        ...(accountId ? { id: accountId } : {}),
+        user: { id: session.user.id },
+      },
+    });
 
-    if (!account || !account.id) {
+    if (!account) {
       return reply.status(404).send({ message: "Account not found" });
     }
 
@@ -112,51 +151,60 @@ export async function handleCreateTransaction(
       return reply.status(400).send({ message: "Insufficient balance" });
     }
 
-    const newBalance = parseFloat(
-      (type === "EXPENSE"
-        ? Number(account.balance) - Number(amount)
-        : Number(account.balance) + Number(amount)
-      ).toFixed(2)
-    );
+    const allCategories = [];
+    if (categories && categories.length > 0) {
+      for (const categoryName of categories) {
+        let category = await categoriesRepository.findOne({
+          where: { name: categoryName, user: { id: session.user.id } },
+        });
 
-    const queryRunner = request.server.orm.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
+        if (!category) {
+          category = categoriesRepository.create({
+            name: categoryName,
+            user: { id: session.user.id },
+          });
+          await queryRunner.manager.save(category);
+        }
 
-    try {
-      const newTransaction = transactionRepository.create({
-        type,
-        amount,
-        note,
-        imageUrl,
-        account,
-      });
-
-      await queryRunner.manager.save(newTransaction);
-      await queryRunner.manager.update(Account, account.id, {
-        balance: newBalance,
-      });
-
-      await queryRunner.commitTransaction();
-      return reply.status(201).send({
-        ...newTransaction,
-        info: {
-          accountId: account.id,
-          balance: newBalance,
-          messages: "Transaction created successfully",
-          status: "success",
-        },
-      });
-    } catch (error) {
-      await queryRunner.rollbackTransaction();
-      throw error;
-    } finally {
-      await queryRunner.release();
+        allCategories.push(category);
+      }
     }
+
+    const filterNote = filterBadWords(note);
+
+    const newTransaction = transactionRepository.create({
+      type,
+      amount,
+      note: filterNote,
+      imageUrl,
+      account,
+      categories: allCategories,
+    });
+
+    await queryRunner.manager.save(newTransaction);
+    await queryRunner.commitTransaction();
+
+    const {
+      account: _account,
+      categories: _categories,
+      ...transaction
+    } = newTransaction;
+    return reply.status(201).send({
+      accountId: account.id,
+      status: "success",
+      message: "Transaction created successfully",
+      categories,
+      transaction,
+    });
   } catch (error) {
-    return reply
-      .status(500)
-      .send({ message: `Failed to create transaction: ${error}` });
+    await queryRunner.rollbackTransaction();
+    request.log.error(error);
+    return reply.status(500).send({
+      message: "Failed to create transaction",
+      error: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    await queryRunner.release();
   }
 }
 
@@ -194,11 +242,13 @@ export async function handleUpdateTransaction(
       return reply.status(404).send("Transaction not found");
     }
 
+    const filterNote = filterBadWords(note);
+
     const newTransaction = transactionRepository.create({
       ...transaction,
       type,
       amount,
-      note,
+      note: filterNote,
       imageUrl,
     });
 
@@ -247,8 +297,7 @@ export async function handleUploadSlip(
 
     const fileName = `${user.id}-${new Date().toISOString()}.${filetype}`;
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { data, error } = await request.server.supabase.storage
+    const { error } = await request.server.supabase.storage
       .from("images")
       .upload(fileName, fileData!.file, {
         duplex: "half",

@@ -16,28 +16,50 @@ const transactionSchema = Joi.object({
   amount: Joi.number().required(),
   note: Joi.string().optional(),
   imageUrl: Joi.string().uri().optional(),
+  categories: Joi.array().items(Joi.string()).optional(),
 });
 
 export default async function TransactionRoute(fastify: FastifyInstance) {
-  fastify.get<{ Querystring: { accountId?: string } }>(
+  fastify.get<{
+    Querystring: {
+      accountId?: string;
+      categories?: string[];
+      page?: number;
+      limit?: number;
+      startDate?: string;
+      endDate?: string;
+    };
+  }>(
     "/transaction",
     {
       schema: {
         tags: ["transaction"],
-        description: "Get all transactions for an account",
-        querystring: parse(Joi.object({ accountId: Joi.string().optional() })),
+        description:
+          "Get all transactions for an account **if you want to filter by categories, you can pass the categories query in the URL like this: /transaction?categories=food&categories=transport in postman or insomnia instead**",
+        querystring: parse(
+          Joi.object({
+            accountId: Joi.string().optional(),
+            categories: Joi.array().items(Joi.string()).optional(),
+            page: Joi.number().optional(),
+            limit: Joi.number().optional(),
+            startDate: Joi.string().optional(),
+            endDate: Joi.string().optional(),
+          })
+        ),
       },
       preHandler: fastify.authenticate,
     },
     handleGetTransactions
   );
 
-  fastify.get<{ Params: { transactionId: string } }>(
+  fastify.get<{
+    Params: { transactionId: string };
+  }>(
     "/transaction/:transactionId",
     {
       schema: {
         tags: ["transaction"],
-        description: "Get a transaction by ID",
+        description: "Get a transaction by ID ",
         params: parse(
           Joi.object({
             transactionId: Joi.string().description("Transaction ID"),

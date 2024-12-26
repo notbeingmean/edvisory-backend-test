@@ -32,7 +32,10 @@ export async function handleCreateAccount(
 
     await accountRepository.save(newAccount);
 
-    return reply.status(201).send(newAccount);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { user: _, ...data } = newAccount;
+
+    return reply.status(201).send(data);
   } catch (error) {
     return reply
       .status(500)
@@ -68,22 +71,42 @@ export async function handleGetAccount(
 }
 
 export async function handleGetAccounts(
-  request: FastifyRequest,
+  request: FastifyRequest<{
+    Querystring: {
+      page?: string;
+      limit?: string;
+    };
+  }>,
   reply: FastifyReply
 ) {
   const accountRepository = request.server.orm.getRepository(Account);
+  const { page = "1", limit = "10" } = request.query;
+
+  const pageNumber = parseInt(page);
+  const pageSize = parseInt(limit);
+  const skip = (pageNumber - 1) * pageSize;
 
   try {
-    const accounts = await accountRepository.find({
+    const [accounts, total] = await accountRepository.findAndCount({
       where: { user: { id: request.session.user.id } },
       relations: ["transactions"],
+      skip,
+      take: pageSize,
     });
 
     if (!accounts.length) {
       return reply.status(404).send({ message: "No accounts found" });
     }
 
-    return reply.send(accounts);
+    return reply.send({
+      data: accounts,
+      meta: {
+        page: pageNumber,
+        limit: pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    });
   } catch (error) {
     return reply
       .status(500)
@@ -155,6 +178,102 @@ export async function handleDeleteAccount(
   }
 }
 
+export async function handleGetAccountsSummary(
+  request: FastifyRequest<{
+    Querystring: {
+      month?: string;
+      year?: string;
+      page?: string;
+      limit?: string;
+    };
+  }>,
+  reply: FastifyReply
+) {
+  const accountRepository = request.server.orm.getRepository(Account);
+  const { month, year, page = "1", limit = "10" } = request.query;
+
+  const pageNumber = parseInt(page);
+  const pageSize = parseInt(limit);
+  const skip = (pageNumber - 1) * pageSize;
+
+  try {
+    const [accounts, total] = await accountRepository.findAndCount({
+      where: { user: { id: request.session.user.id } },
+      relations: ["transactions"],
+      skip,
+      take: pageSize,
+    });
+
+    if (!accounts.length) {
+      return reply.status(404).send({ message: "No accounts found" });
+    }
+
+    const targetMonth = month ? parseInt(month) - 1 : new Date().getMonth();
+    const targetYear = year ? parseInt(year) : new Date().getFullYear();
+
+    const summary = accounts.map((account) => {
+      const filteredTransactions = account.transactions.filter(
+        (transaction) => {
+          if (!transaction.createdAt) return false;
+          const transactionDate = new Date(transaction.createdAt);
+          return (
+            transactionDate.getMonth() === targetMonth &&
+            transactionDate.getFullYear() === targetYear
+          );
+        }
+      );
+
+      const { income, expense } = filteredTransactions.reduce(
+        (acc, { type, amount }) => ({
+          income: Number(
+            (acc.income + (type === "INCOME" ? Number(amount) : 0)).toFixed(2)
+          ),
+          expense: Number(
+            (acc.expense + (type === "EXPENSE" ? Number(amount) : 0)).toFixed(2)
+          ),
+        }),
+        { income: 0, expense: 0 }
+      );
+
+      const remainingBalance = income + Number(account.balance) - expense;
+
+      const lastDayOfMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+      const currentDate = new Date();
+      const remainingDays =
+        currentDate.getFullYear() === targetYear &&
+        currentDate.getMonth() === targetMonth
+          ? lastDayOfMonth - currentDate.getDate()
+          : 0;
+
+      return {
+        accountId: account.id,
+        accountName: account.accountName,
+        income,
+        expense,
+        transactionCount: filteredTransactions.length,
+        initialBalance: account.balance,
+        remainingBalance,
+        dailyBudget: remainingDays > 0 ? remainingBalance / remainingDays : 0,
+        remainingDays: Math.max(remainingDays, 0),
+      };
+    });
+
+    return reply.send({
+      data: summary,
+      meta: {
+        page: pageNumber,
+        limit: pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    });
+  } catch (error) {
+    return reply
+      .status(500)
+      .send({ message: `Failed to fetch accounts summary: ${error}` });
+  }
+}
+
 export async function handleGetAccountSummary(
   request: FastifyRequest<{ Params: { accountId: string } }>,
   reply: FastifyReply
@@ -189,13 +308,13 @@ export async function handleGetAccountSummary(
         0
       ).getDate() - new Date().getDate();
 
-    const remainingBalance = account.balance - expense;
+    const remainingBalance = income + Number(account.balance) - expense;
 
     return reply.send({
       income,
       expense,
       transactionCount: account.transactions.length,
-      initialBalance: account.balance,
+      initialBalance: Number(account.balance),
       remainingBalance,
       dailyBudget: remainingDays > 0 ? remainingBalance / remainingDays : 0,
       remainingDays: Math.max(remainingDays, 0),

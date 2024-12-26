@@ -6,6 +6,7 @@ import {
   handleDeleteAccount,
   handleGetAccount,
   handleGetAccounts,
+  handleGetAccountsSummary,
   handleGetAccountSummary,
   handleUpdateAccount,
 } from "../handlers/account";
@@ -55,16 +56,45 @@ export default async function AccountRoute(fastify: FastifyInstance) {
     handleGetAccount
   );
 
-  fastify.get(
+  fastify.get<{
+    Querystring: {
+      page?: string;
+      limit?: string;
+    };
+  }>(
     "/account",
     {
       schema: {
         tags: ["Account"],
         description: "Get all accounts for the authenticated user",
+        querystring: parse(
+          Joi.object({
+            page: Joi.string().description("page"),
+            limit: Joi.string().description("limit"),
+          })
+        ),
       },
       preHandler: fastify.authenticate,
     },
     handleGetAccounts
+  );
+
+  fastify.get<{ Querystring: { month?: string; year?: string } }>(
+    "/account/summary",
+    {
+      schema: {
+        tags: ["Account"],
+        description: "Get account summary for the authenticated user",
+        querystring: parse(
+          Joi.object({
+            month: Joi.string().description("Month"),
+            year: Joi.string().description("Year"),
+          })
+        ),
+      },
+      preHandler: fastify.authenticate,
+    },
+    handleGetAccountsSummary
   );
 
   fastify.patch<{ Body: TAccountBody; Params: { accountId: string } }>(
