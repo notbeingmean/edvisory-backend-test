@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { DataSource, DataSourceOptions } from "typeorm";
-import { User, Account, Transaction, Session } from "../../entities";
+import { User, Account, Transaction, Session, Category } from "../../entities";
 
 export const db_opts: DataSourceOptions = {
   type: "postgres",
@@ -11,7 +11,10 @@ export const db_opts: DataSourceOptions = {
   database: process.env.POSTGRES_DB,
   synchronize: true,
   logging: false,
-  entities: [User, Account, Transaction, Session],
+  entities: [User, Account, Transaction, Session, Category],
+  ssl: {
+    rejectUnauthorized: false,
+  },
 };
 
 export const AppDataSource = new DataSource(db_opts);
