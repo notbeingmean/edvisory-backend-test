@@ -40,7 +40,7 @@ async function main() {
   try {
     await AppDataSource.initialize();
     app.log.info("Database connected successfully");
-    await app.listen({ port: parseInt(process.env.PORT) });
+    await app.listen({ port: Number(process.env.PORT), host: "0.0.0.0" });
   } catch (error) {
     app.log.error(error);
     process.exit(1);

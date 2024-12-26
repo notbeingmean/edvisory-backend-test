@@ -1,14 +1,7 @@
 services:
-  db:
-    image: postgres:alpine
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  app:
+    build: .
+    restart: always
+    command: ["pnpm", "start"]
     ports:
-      - "5432:5432"
-    volumes:
-      - ./data:/var/lib/postgresql/data
-
-volumes:
-  data:
+      - "3000:3000"
