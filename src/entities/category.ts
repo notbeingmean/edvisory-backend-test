@@ -1,7 +1,7 @@
-import { IsEnum } from "class-validator";
 import {
   Column,
   Entity,
+  JoinTable,
   ManyToMany,
   ManyToOne,
   PrimaryGeneratedColumn,
@@ -17,16 +17,10 @@ export class Category {
   @Column()
   name!: string;
 
-  @Column({
-    type: "enum",
-    enum: ["INCOME", "EXPENSE"],
-  })
-  @IsEnum(["INCOME", "EXPENSE"])
-  type!: "INCOME" | "EXPENSE";
-
   @ManyToOne(() => User, (user) => user.categories)
   user!: User;
 
   @ManyToMany(() => Transaction, (transaction) => transaction.categories)
+  @JoinTable()
   transactions?: Transaction[];
 }

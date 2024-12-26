@@ -7,6 +7,7 @@ import {
   ManyToOne,
   JoinColumn,
   ManyToMany,
+  JoinTable,
 } from "typeorm";
 import { IsEnum, IsNumber, Min, IsUrl } from "class-validator";
 
@@ -42,6 +43,7 @@ export class Transaction {
   account!: Account;
 
   @ManyToMany(() => Category, (cat) => cat.transactions)
+  @JoinTable()
   categories?: Category[];
 
   @CreateDateColumn()
