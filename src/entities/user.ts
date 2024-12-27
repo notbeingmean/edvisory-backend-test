@@ -8,7 +8,6 @@ import {
 } from "typeorm";
 import { Account } from "./account";
 import { IsEmail, MinLength } from "class-validator";
-import { Category } from "./category";
 
 @Entity("users")
 export class User {
@@ -35,7 +34,4 @@ export class User {
 
   @OneToMany(() => Account, (account) => account.user)
   accounts?: Account[];
-
-  @OneToMany(() => Category, (category) => category.user)
-  categories?: Category[];
 }

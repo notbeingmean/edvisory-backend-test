@@ -6,6 +6,7 @@ import {
   PrimaryGeneratedColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  JoinTable,
 } from "typeorm";
 import { User } from "./user";
 import { Transaction } from "./transaction";
