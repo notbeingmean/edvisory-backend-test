@@ -18,10 +18,13 @@
 ## ระบบที่คิดว่าจะพัฒนาต่อ
 
 - [ ] ระบบรองรับหลายภาษา
-- [ ] ระบบ import ข้อมูลจากไฟล์ excel, csv หรือ json
-- [ ] ระบบ export ข้อมูลเป็นไฟล์ excel, csv หรือ json
+- [x] ระบบ import ข้อมูลจากไฟล์ excel, csv หรือ json
+- [x] ระบบ export ข้อมูลเป็นไฟล์ excel, csv หรือ json
 - [ ] ระบบจดจํา device ที่ทําการ login และสามารถกดออกจากระบบทุก device ไดใ้นการจัดการ security ของ
       account
+  - [x] ระบบจดจํา device ที่ทําการ login
+  - [ ] สามารถกดออกจากระบบทุก device ไดใ้นการจัดการ security ของ
+        account
 
 ## แนวคิดในการพัฒนาระบบ
 
@@ -39,7 +42,6 @@
   - `updatedAt` (timestamp)
   - **Relationships**:
     - One-to-Many with **Account**
-    - One-to-Many with **Category**
     - One-to-Many with **Transaction**
 
 - **Account**
@@ -54,15 +56,6 @@
     - Many-to-One with **User**
     - One-to-Many with **Transaction**
 
-- **Category**
-
-  - `id` (Primary Key, UUID)
-  - `name` (varchar)
-  - `userId` (Foreign Key, UUID, references `User.id`)
-  - **Relationships**:
-    - Many-to-One with **User**
-    - Many-to-Many with **Transaction**
-
 - **Transaction**
 
   - `id` (Primary Key, UUID)
@@ -70,12 +63,12 @@
   - `amount` (decimal)
   - `imageUrl` (varchar, nullable)
   - `note` (varchar, nullable)
+  - `tags` (array of string)
   - `accountId` (Foreign Key, UUID, references `Account.id`)
   - `createdAt` (timestamp)
   - `updatedAt` (timestamp)
   - **Relationships**:
     - Many-to-One with **Account**
-    - Many-to-Many with **Category**
     - Many-to-One with **User**
 
 - **Session**
@@ -85,11 +78,7 @@
   - `json` (text)
   - `destroyedAt` (timestamp, nullable)
 
-- **Category_Transaction** (Join Table for Many-to-Many relationship between Category and Transaction)
-  - `categoryId` (Foreign Key, UUID, references `Category.id`)
-  - `transactionId` (Foreign Key, UUID, references `Transaction.id`)
-
-หลังจากที่ออกแบบฐานข้อมูลเสร็จแล้วใน step ถัดไปคือการเริ่มที่การเขียนโค้ด โดยผมจะเริ่มที่การเขียนโค้ดจากการเขียน API ของระบบ โดยจะเริ่มที่การเขียน API ที่จำเป็นต้องใช้งานก่อน โดยจะเริ่มที่การเขียน API ของ User และ Session ก่อน และจะเริ่มที่การเขียน API ของ Account และ Category และ Transaction ตามลำดับ
+หลังจากที่ออกแบบฐานข้อมูลเสร็จแล้วใน step ถัดไปคือการเริ่มที่การเขียนโค้ด โดยผมจะเริ่มที่การเขียนโค้ดจากการเขียน API ของระบบ โดยจะเริ่มที่การเขียน API ที่จำเป็นต้องใช้งานก่อน โดยจะเริ่มที่การเขียน API ของ User และ Session ก่อน และจะเริ่มที่การเขียน API ของ Account และ Transaction ตามลำดับ
 
 ### เทคโนโลยีที่ใช้ในการพัฒนาระบบ
 
