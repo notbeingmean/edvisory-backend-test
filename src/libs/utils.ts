@@ -1,4 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import bcrypt from "bcrypt";
+import { Account, Transaction } from "../entities";
+import { DeepPartial } from "typeorm";
+import { parse } from "csv-parse";
+import { read as parseExcel, utils as xlsxUtils } from "xlsx";
 
 async function hashPassword(password: string) {
   const hashedPassword = bcrypt.hash(
@@ -53,4 +58,56 @@ function convertToDateTime(date: string) {
   }
 }
 
-export { hashPassword, comparePassword, filterBadWords, convertToDateTime };
+async function parseCSV(
+  data: any,
+  account: Account
+): Promise<DeepPartial<Transaction>[]> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of data.file) {
+    chunks.push(chunk);
+  }
+  const buffer = Buffer.concat(chunks);
+  const output = await new Promise<any[]>((resolve, reject) => {
+    parse(buffer, { columns: true }, (err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
+  });
+  return output.map((row: any) => ({
+    ...row,
+    account: account,
+  }));
+}
+
+function parseExcelFile(
+  data: any,
+  account: Account
+): DeepPartial<Transaction>[] {
+  const workbook = parseExcel(data);
+  const sheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
+  return xlsxUtils.sheet_to_json(worksheet).map((row: any) => ({
+    ...row,
+    account: account,
+  }));
+}
+
+function parseJSONFile(
+  data: any,
+  account: Account
+): DeepPartial<Transaction>[] {
+  return JSON.parse(data.toString()).map((row: any) => ({
+    ...row,
+    account: account,
+  }));
+}
+
+export {
+  hashPassword,
+  comparePassword,
+  filterBadWords,
+  convertToDateTime,
+  parseCSV,
+  parseExcelFile,
+  parseJSONFile,
+};

@@ -277,3 +277,18 @@ docker-compose up
       "remainingDays": 4
     }
     ```
+
+### Import และ Export ข้อมูล
+
+ในการ import และ export ข้อมูล สามารถทำได้ผ่าน API ดังนี้:
+
+- **Import Data** (Require Authentication)
+
+  - `POST /api/data/import` สำหรับการ import ข้อมูล
+    - สามารถ import ข้อมูลได้โดยส่งไฟล์ไปยัง Multipart/FormData ดังนี้
+      - `file` (file, required) - ไฟล์ข้อมูลที่ต้องการ import (รองรับไฟล์ประเภท CSV, Excel, JSON)
+
+- **Export Data** (Require Authentication)
+  - `GET /api/data/export` สำหรับการ export ข้อมูล
+    - Query Parameters:
+      - `format` (string, required) - รูปแบบไฟล์ที่ต้องการ export (รองรับ CSV, Excel, JSON)
