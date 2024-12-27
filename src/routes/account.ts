@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import parse from "joi-to-json";
 import Joi from "joi";
 import {
+  handleCalculateAccount,
   handleCreateAccount,
   handleDeleteAccount,
   handleGetAccount,
@@ -79,7 +80,15 @@ export default async function AccountRoute(fastify: FastifyInstance) {
     handleGetAccounts
   );
 
-  fastify.get<{ Querystring: { month?: string; year?: string } }>(
+  fastify.get<{
+    Querystring: {
+      month?: string;
+      year?: string;
+      page?: string;
+      limit?: string;
+      tags?: string[];
+    };
+  }>(
     "/account/summary",
     {
       schema: {
@@ -89,6 +98,9 @@ export default async function AccountRoute(fastify: FastifyInstance) {
           Joi.object({
             month: Joi.string().description("Month"),
             year: Joi.string().description("Year"),
+            page: Joi.string().optional().description("Page"),
+            limit: Joi.string().optional().description("Limit"),
+            tags: Joi.array().items(Joi.string()).description("Tags"),
           })
         ),
       },
@@ -136,7 +148,16 @@ export default async function AccountRoute(fastify: FastifyInstance) {
     handleDeleteAccount
   );
 
-  fastify.get<{ Params: { accountId: string } }>(
+  fastify.get<{
+    Params: {
+      accountId: string;
+    };
+    Querystring: {
+      month?: string;
+      year?: string;
+      tags?: string[];
+    };
+  }>(
     "/account/:accountId/summary",
     {
       schema: {
@@ -147,9 +168,41 @@ export default async function AccountRoute(fastify: FastifyInstance) {
             accountId: Joi.string().description("Account ID"),
           })
         ),
+        querystring: parse(
+          Joi.object({
+            month: Joi.string().description("Month"),
+            year: Joi.string().description("Year"),
+            tags: Joi.array().items(Joi.string()).description("Tags"),
+          })
+        ),
       },
       preHandler: fastify.authenticate,
     },
     handleGetAccountSummary
+  );
+
+  fastify.get<{
+    Params: { accountId: string };
+    Querystring: { budget?: string };
+  }>(
+    "/account/:accountId/calculate",
+    {
+      schema: {
+        tags: ["Account"],
+        description: "Get account summary by ID",
+        params: parse(
+          Joi.object({
+            accountId: Joi.string().description("Account ID"),
+          })
+        ),
+        querystring: parse(
+          Joi.object({
+            budget: Joi.string().description("Budget"),
+          })
+        ),
+      },
+      preHandler: fastify.authenticate,
+    },
+    handleCalculateAccount
   );
 }

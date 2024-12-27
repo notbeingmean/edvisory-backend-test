@@ -4,6 +4,7 @@ import Joi from "joi";
 import {
   CreateTransactionType,
   handleCreateTransaction,
+  handleDeleteSlip,
   handleDeleteTransaction,
   handleGetTransaction,
   handleGetTransactions,
@@ -16,14 +17,14 @@ const transactionSchema = Joi.object({
   amount: Joi.number().required(),
   note: Joi.string().optional(),
   imageUrl: Joi.string().uri().optional(),
-  categories: Joi.array().items(Joi.string()).optional(),
+  tags: Joi.array().items(Joi.string()).optional(),
 });
 
 export default async function TransactionRoute(fastify: FastifyInstance) {
   fastify.get<{
     Querystring: {
       accountId?: string;
-      categories?: string[];
+      tags?: string[];
       page?: number;
       limit?: number;
       startDate?: string;
@@ -35,11 +36,11 @@ export default async function TransactionRoute(fastify: FastifyInstance) {
       schema: {
         tags: ["transaction"],
         description:
-          "Get all transactions for an account **if you want to filter by categories, you can pass the categories query in the URL like this: /transaction?categories=food&categories=transport in postman or insomnia instead**",
+          "Get all transactions for an account **if you want to filter by tags, you can pass the tags query in the URL like this: /transaction?tags=food&tags=transport in postman or insomnia instead**",
         querystring: parse(
           Joi.object({
             accountId: Joi.string().optional(),
-            categories: Joi.array().items(Joi.string()).optional(),
+            tags: Joi.array().items(Joi.string()).optional(),
             page: Joi.number().optional(),
             limit: Joi.number().optional(),
             startDate: Joi.string().optional(),
@@ -134,6 +135,23 @@ export default async function TransactionRoute(fastify: FastifyInstance) {
       preHandler: fastify.authenticate,
     },
     handleUploadSlip
+  );
+
+  fastify.delete<{ Params: { transactionId: string } }>(
+    "/transaction/:transactionId/delete-slip",
+    {
+      schema: {
+        tags: ["transaction"],
+        description: "Delete a transaction",
+        params: parse(
+          Joi.object({
+            transactionId: Joi.string().description("Transaction ID"),
+          })
+        ),
+      },
+      preHandler: fastify.authenticate,
+    },
+    handleDeleteSlip
   );
 
   fastify.delete<{ Params: { transactionId: string } }>(

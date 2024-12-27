@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { Account, User } from "../entities";
+import { In } from "typeorm";
 
 type TAccountBody = {
   accountName: string;
@@ -185,12 +186,13 @@ export async function handleGetAccountsSummary(
       year?: string;
       page?: string;
       limit?: string;
+      tags?: string[];
     };
   }>,
   reply: FastifyReply
 ) {
   const accountRepository = request.server.orm.getRepository(Account);
-  const { month, year, page = "1", limit = "10" } = request.query;
+  const { month, year, page = "1", limit = "10", tags } = request.query;
 
   const pageNumber = parseInt(page);
   const pageSize = parseInt(limit);
@@ -198,7 +200,10 @@ export async function handleGetAccountsSummary(
 
   try {
     const [accounts, total] = await accountRepository.findAndCount({
-      where: { user: { id: request.session.user.id } },
+      where: {
+        user: { id: request.session.user.id },
+        transactions: { tags: tags ? In(tags) : undefined },
+      },
       relations: ["transactions"],
       skip,
       take: pageSize,
@@ -237,24 +242,15 @@ export async function handleGetAccountsSummary(
 
       const remainingBalance = income + Number(account.balance) - expense;
 
-      const lastDayOfMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
-      const currentDate = new Date();
-      const remainingDays =
-        currentDate.getFullYear() === targetYear &&
-        currentDate.getMonth() === targetMonth
-          ? lastDayOfMonth - currentDate.getDate()
-          : 0;
-
       return {
         accountId: account.id,
         accountName: account.accountName,
-        income,
-        expense,
+        totalIncome: income,
+        totalExpense: expense,
         transactionCount: filteredTransactions.length,
         initialBalance: account.balance,
         remainingBalance,
-        dailyBudget: remainingDays > 0 ? remainingBalance / remainingDays : 0,
-        remainingDays: Math.max(remainingDays, 0),
+        transactions: filteredTransactions,
       };
     });
 
@@ -275,10 +271,78 @@ export async function handleGetAccountsSummary(
 }
 
 export async function handleGetAccountSummary(
-  request: FastifyRequest<{ Params: { accountId: string } }>,
+  request: FastifyRequest<{
+    Params: { accountId: string };
+    Querystring: {
+      month?: string;
+      year?: string;
+      tags?: string[];
+    };
+  }>,
   reply: FastifyReply
 ) {
   const accountRepository = request.server.orm.getRepository(Account);
+  const { month, year, tags } = request.query;
+
+  try {
+    const account = await accountRepository.findOne({
+      where: {
+        id: request.params.accountId,
+        user: { id: request.session.user.id },
+        transactions: { tags: tags ? In(tags) : undefined },
+      },
+      relations: ["transactions"],
+    });
+
+    if (!account) {
+      return reply.status(404).send({ message: "Account not found" });
+    }
+
+    const targetMonth = month ? parseInt(month) - 1 : new Date().getMonth();
+    const targetYear = year ? parseInt(year) : new Date().getFullYear();
+
+    const filteredTransactions = account.transactions.filter((transaction) => {
+      if (!transaction.createdAt) return false;
+      const transactionDate = new Date(transaction.createdAt);
+      return (
+        transactionDate.getMonth() === targetMonth &&
+        transactionDate.getFullYear() === targetYear
+      );
+    });
+
+    const { income, expense } = filteredTransactions.reduce(
+      (acc, { type, amount }) => ({
+        income: acc.income + (type === "INCOME" ? Number(amount) : 0),
+        expense: acc.expense + (type === "EXPENSE" ? Number(amount) : 0),
+      }),
+      { income: 0, expense: 0 }
+    );
+
+    const remainingBalance = income + Number(account.balance) - expense;
+
+    return reply.send({
+      income,
+      expense,
+      transactionCount: filteredTransactions.length,
+      initialBalance: Number(account.balance),
+      remainingBalance,
+    });
+  } catch (error) {
+    return reply
+      .status(500)
+      .send({ message: `Failed to fetch account summary: ${error}` });
+  }
+}
+
+export async function handleCalculateAccount(
+  request: FastifyRequest<{
+    Params: { accountId: string };
+    Querystring: { budget?: string };
+  }>,
+  reply: FastifyReply
+) {
+  const accountRepository = request.server.orm.getRepository(Account);
+  const { budget } = request.query;
 
   try {
     const account = await accountRepository.findOne({
@@ -293,6 +357,9 @@ export async function handleGetAccountSummary(
       return reply.status(404).send({ message: "Account not found" });
     }
 
+    const targetMonth = new Date().getMonth();
+    const targetYear = new Date().getFullYear();
+
     const { income, expense } = account.transactions.reduce(
       (acc, { type, amount }) => ({
         income: acc.income + (type === "INCOME" ? Number(amount) : 0),
@@ -301,27 +368,23 @@ export async function handleGetAccountSummary(
       { income: 0, expense: 0 }
     );
 
-    const remainingDays =
-      new Date(
-        new Date().getFullYear(),
-        new Date().getMonth() + 1,
-        0
-      ).getDate() - new Date().getDate();
-
     const remainingBalance = income + Number(account.balance) - expense;
+    const remainingDays =
+      new Date(targetYear, targetMonth + 1, 0).getDate() - new Date().getDate();
+    const monthlyBudget = budget ? parseFloat(budget) : remainingBalance;
+    const dailyBudget = remainingDays > 0 ? monthlyBudget / remainingDays : 0;
 
     return reply.send({
-      income,
-      expense,
-      transactionCount: account.transactions.length,
+      totalIncome: income,
+      totalExpense: expense,
       initialBalance: Number(account.balance),
       remainingBalance,
-      dailyBudget: remainingDays > 0 ? remainingBalance / remainingDays : 0,
+      dailyBudget,
       remainingDays: Math.max(remainingDays, 0),
     });
   } catch (error) {
     return reply
       .status(500)
-      .send({ message: `Failed to fetch account summary: ${error}` });
+      .send({ message: `Failed to calculate account: ${error}` });
   }
 }

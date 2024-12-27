@@ -1,22 +1,23 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { Account, Transaction } from "../entities";
-import { Category } from "../entities/category";
+
 import { In, Between } from "typeorm";
 import { convertToDateTime, filterBadWords } from "../libs/utils";
+import { supabase } from "../configs/db/supabase";
 
 export type CreateTransactionType = {
   type: "INCOME" | "EXPENSE";
   amount: number;
   note: string;
   imageUrl?: string;
-  categories?: string[];
+  tags?: string[];
 };
 
 export async function handleGetTransactions(
   request: FastifyRequest<{
     Querystring: {
       accountId?: string;
-      categories?: string[];
+      tags?: string[];
       page?: number;
       limit?: number;
       startDate?: string;
@@ -28,7 +29,7 @@ export async function handleGetTransactions(
   const transactionRepository = request.server.orm.getRepository(Transaction);
   const accountRepository = request.server.orm.getRepository(Account);
 
-  const { accountId, categories, startDate, endDate } = request.query;
+  const { accountId, tags, startDate, endDate } = request.query;
 
   const page = request.query.page || 1;
   const limit = request.query.limit || 10;
@@ -55,15 +56,12 @@ export async function handleGetTransactions(
     const [transactions, total] = await transactionRepository.findAndCount({
       where: {
         account: { id: account.id },
-        categories: {
-          name: categories ? In(categories) : undefined,
-        },
+        tags: tags ? In(tags) : undefined,
         createdAt:
           startDate && endDate
             ? Between(convertToDateTime(startDate), convertToDateTime(endDate))
             : undefined,
       },
-      relations: ["categories"],
       skip,
       take: limit,
       order: { createdAt: "DESC" },
@@ -101,7 +99,6 @@ export async function handleGetTransaction(
         id: transactionId,
         account: { user: { id: user.id } },
       },
-      relations: ["categories"],
     });
 
     if (!transaction) {
@@ -121,7 +118,7 @@ export async function handleCreateTransaction(
   }>,
   reply: FastifyReply
 ) {
-  const { type, amount, note, imageUrl, categories } = request.body;
+  const { type, amount, note, imageUrl, tags = [] } = request.body;
 
   const { accountId } = request.query;
   const { orm } = request.server;
@@ -129,7 +126,6 @@ export async function handleCreateTransaction(
 
   const transactionRepository = orm.getRepository(Transaction);
   const accountRepository = orm.getRepository(Account);
-  const categoriesRepository = orm.getRepository(Category);
 
   const queryRunner = orm.createQueryRunner();
   await queryRunner.connect();
@@ -151,24 +147,16 @@ export async function handleCreateTransaction(
       return reply.status(400).send({ message: "Insufficient balance" });
     }
 
-    const allCategories = [];
-    if (categories && categories.length > 0) {
-      for (const categoryName of categories) {
-        let category = await categoriesRepository.findOne({
-          where: { name: categoryName, user: { id: session.user.id } },
-        });
+    const newBalance = parseFloat(
+      (type === "EXPENSE"
+        ? Number(account.balance) - Number(amount)
+        : Number(account.balance) + Number(amount)
+      ).toFixed(2)
+    );
 
-        if (!category) {
-          category = categoriesRepository.create({
-            name: categoryName,
-            user: { id: session.user.id },
-          });
-          await queryRunner.manager.save(category);
-        }
-
-        allCategories.push(category);
-      }
-    }
+    await queryRunner.manager.update(Account, account.id, {
+      balance: newBalance,
+    });
 
     const filterNote = filterBadWords(note);
 
@@ -178,22 +166,17 @@ export async function handleCreateTransaction(
       note: filterNote,
       imageUrl,
       account,
-      categories: allCategories,
+      tags,
     });
 
     await queryRunner.manager.save(newTransaction);
     await queryRunner.commitTransaction();
 
-    const {
-      account: _account,
-      categories: _categories,
-      ...transaction
-    } = newTransaction;
+    const { account: _account, ...transaction } = newTransaction;
     return reply.status(201).send({
       accountId: account.id,
       status: "success",
       message: "Transaction created successfully",
-      categories,
       transaction,
     });
   } catch (error) {
@@ -315,6 +298,48 @@ export async function handleUploadSlip(
     return reply.send(transaction);
   } catch (error) {
     return reply.status(500).send("Failed to upload slip: " + error);
+  }
+}
+
+export async function handleDeleteSlip(
+  request: FastifyRequest<{ Params: { transactionId: string } }>,
+  reply: FastifyReply
+) {
+  const { transactionId } = request.params;
+  const transactionRepository = request.server.orm.getRepository(Transaction);
+  const { user } = request.session;
+
+  try {
+    const transaction = await transactionRepository.findOne({
+      where: {
+        id: transactionId,
+        account: { user: { id: user.id } },
+      },
+    });
+
+    if (!transaction) {
+      return reply.status(404).send("Transaction not found");
+    }
+
+    const imageUrl = transaction.imageUrl;
+
+    if (imageUrl) {
+      const fileName = imageUrl.split("public/images/")[1];
+      const { error } = await supabase.storage
+        .from("images")
+        .remove([fileName]);
+
+      if (error) {
+        return reply.status(500).send("Failed to delete slip: " + error);
+      }
+    }
+    transaction.imageUrl = undefined;
+
+    await transactionRepository.save(transaction);
+
+    return reply.send(transaction);
+  } catch (error) {
+    return reply.status(500).send("Failed to delete slip: " + error);
   }
 }
 
